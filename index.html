@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>人鱼补光</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+:root{
+  --bg:#FFFAF8;--card:#FFFFFF;--accent:#E8A0B4;--accent2:#F5D5E0;--accent3:#D4859B;
+  --text:#4A3B3C;--text2:#9B8E8F;--border:#F0E8EA;--shadow:rgba(200,180,185,.15);
+  --radius:18px;--radius-sm:12px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+  background:#000;color:var(--text);overflow:hidden;height:100dvh;width:100vw;
+  -webkit-tap-highlight-color:transparent;user-select:none;
+  -webkit-user-select:none;
+}
+#app{position:fixed;inset:0;display:flex;flex-direction:column;overflow:hidden}
+
+/* Camera fullscreen */
+#cameraWrap{position:absolute;inset:0;overflow:hidden;z-index:0}
+#cameraWrap video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+#cameraWrap .mirror{transform:scaleX(-1)}
+#softLayer{position:absolute;inset:0;opacity:0;transition:opacity .4s}
+#softLayer.active{opacity:.35;filter:blur(6px) brightness(1.15)}
+#lightOverlay{position:absolute;inset:0;pointer-events:none;transition:background .3s,opacity .3s}
+#guideOverlay{position:absolute;inset:0;pointer-events:none;display:none}
+#guideOverlay.active{display:block}
+
+/* Timer */
+#timerOverlay{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:64px;font-weight:200;color:#fff;text-shadow:0 0 20px rgba(0,0,0,.5);pointer-events:none;display:none;z-index:5}
+#timerOverlay.active{display:block}
+
+/* Toggle button - top left */
+#toggleBtn{position:absolute;top:max(12px,env(safe-area-inset-top,12px));left:12px;z-index:30;width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.18);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1.5px solid rgba(255,255,255,.3);color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .25s}
+#toggleBtn:active{transform:scale(.9);background:rgba(255,255,255,.3)}
+
+/* Top icons bar */
+#topBar{position:absolute;top:max(12px,env(safe-area-inset-top,12px));right:12px;z-index:20;display:flex;gap:8px;transition:opacity .3s,transform .3s}
+.top-icon{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.15);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.25);color:#fff;font-size:16px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s}
+.top-icon:active{transform:scale(.88);background:rgba(255,255,255,.28)}
+.top-icon.on{background:var(--accent);border-color:var(--accent)}
+
+/* Bottom drawer */
+#drawer{position:absolute;bottom:0;left:0;right:0;z-index:20;transition:opacity .3s,transform .3s}
+#drawer.hidden{opacity:0;transform:translateY(20px);pointer-events:none}
+.drawer-card{background:linear-gradient(180deg,rgba(255,255,255,.92) 0%,rgba(255,250,248,.96) 100%);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-radius:24px 24px 0 0;padding:16px 16px max(20px,env(safe-area-inset-bottom,20px));box-shadow:0 -4px 30px var(--shadow)}
+
+/* Light presets row */
+.preset-row{display:flex;gap:8px;margin-bottom:12px;overflow-x:auto;scrollbar-width:none;padding:0 2px}
+.preset-row::-webkit-scrollbar{display:none}
+.preset-chip{min-width:56px;padding:8px 10px;border-radius:28px;background:var(--bg);border:1.5px solid var(--border);font-size:12px;font-weight:600;color:var(--text2);text-align:center;cursor:pointer;transition:all .2s;white-space:nowrap;flex-shrink:0}
+.preset-chip.active{background:var(--accent2);border-color:var(--accent);color:var(--accent3);font-weight:700}
+.preset-chip.locked{opacity:.6}
+.preset-chip.locked::after{content:'🔒';font-size:10px;margin-left:2px}
+.preset-chip .emoji{display:block;font-size:18px;margin-bottom:2px}
+
+/* Brightness control */
+.brightness-row{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.brightness-row .label{font-size:11px;color:var(--text2);font-weight:600;min-width:32px}
+.brightness-row input[type=range]{flex:1;-webkit-appearance:none;height:4px;border-radius:2px;background:linear-gradient(90deg,var(--accent2),var(--accent3));outline:none}
+.brightness-row input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;border-radius:50%;background:#fff;border:2px solid var(--accent);box-shadow:0 2px 8px var(--shadow);cursor:pointer}
+.brightness-row .btn-sm{width:30px;height:30px;border-radius:50%;background:var(--bg);border:1.5px solid var(--border);color:var(--text2);font-size:18px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-weight:700}
+.brightness-row .btn-sm:active{background:var(--accent2)}
+.brightness-val{font-size:13px;font-weight:700;color:var(--accent3);min-width:36px;text-align:center}
+
+/* Bottom action row */
+.action-row{display:flex;gap:10px;align-items:center}
+.capture-btn{width:58px;height:58px;border-radius:50%;background:#fff;border:3px solid var(--accent);box-shadow:0 0 0 4px var(--accent2);cursor:pointer;flex-shrink:0;position:relative}
+.capture-btn::after{content:'';position:absolute;inset:5px;border-radius:50%;background:var(--accent3)}
+.capture-btn:active{transform:scale(.9)}
+.feature-scroll{flex:1;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+.feature-scroll::-webkit-scrollbar{display:none}
+.feat-btn{height:36px;padding:0 12px;border-radius:18px;background:var(--bg);border:1.5px solid var(--border);font-size:12px;font-weight:600;color:var(--text2);cursor:pointer;white-space:nowrap;transition:all .2s;display:flex;align-items:center;gap:4px}
+.feat-btn:active{background:var(--accent2);border-color:var(--accent)}
+.feat-btn.on{background:var(--accent2);border-color:var(--accent);color:var(--accent3)}
+.feat-btn.locked{opacity:.5}
+
+/* Unlock button */
+.unlock-badge{position:absolute;top:16px;right:16px;z-index:25;background:linear-gradient(135deg,#E8A0B4,#D4859B);color:#fff;padding:6px 14px;border-radius:16px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(212,133,155,.35);transition:all .2s}
+.unlock-badge:active{transform:scale(.93)}
+.unlock-badge.unlocked{background:linear-gradient(135deg,#4ADE80,#22C55E);box-shadow:0 4px 16px rgba(34,197,94,.3)}
+
+/* Modal */
+.modal-mask{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100;display:none;align-items:center;justify-content:center}
+.modal-mask.show{display:flex}
+.modal{background:#FFFAF8;border-radius:24px;padding:24px 20px;width:calc(100vw - 40px);max-width:380px;max-height:85vh;overflow-y:auto;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.modal h3{font-size:20px;color:var(--text);margin-bottom:4px}
+.modal .price{font-size:36px;font-weight:800;color:var(--accent3);margin:12px 0}
+.modal .price small{font-size:16px;font-weight:500}
+.modal .qr-row{display:flex;gap:12px;margin:16px 0;justify-content:center}
+.modal .qr-box{background:#fff;border-radius:16px;padding:12px;text-align:center;border:1px solid var(--border)}
+.modal .qr-box img{width:120px;height:120px;object-fit:contain;cursor:pointer;border-radius:8px;transition:transform .2s}
+.modal .qr-box img:active{transform:scale(.95)}
+.modal .qr-box .label{font-size:11px;color:var(--text2);margin-top:4px;font-weight:600}
+.qr-zoom-mask{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:200;display:none;align-items:center;justify-content:center;flex-direction:column}
+.qr-zoom-mask.show{display:flex}
+.qr-zoom-mask img{width:280px;height:280px;border-radius:20px;background:#fff;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+.qr-zoom-mask .qr-tip{color:#fff;font-size:15px;margin-top:16px;text-align:center;line-height:1.8}
+.qr-zoom-mask .qr-close{margin-top:20px;color:#fff;font-size:14px;padding:10px 32px;border-radius:20px;background:rgba(255,255,255,.2);border:none;cursor:pointer}
+.modal .steps{text-align:left;font-size:13px;color:var(--text2);line-height:1.8;margin:16px 0;padding:0 8px}
+.modal .steps strong{color:var(--accent3)}
+.modal input[type=text]{width:100%;padding:12px 16px;border-radius:14px;border:2px solid var(--border);font-size:16px;text-align:center;outline:none;transition:border .2s;background:#fff;margin:8px 0}
+.modal input[type=text]:focus{border-color:var(--accent)}
+.modal .btn-row{display:flex;gap:8px;margin-top:12px}
+.modal .btn{flex:1;padding:14px;border-radius:16px;font-size:16px;font-weight:700;border:none;cursor:pointer;transition:all .2s}
+.modal .btn-primary{background:linear-gradient(135deg,#E8A0B4,#D4859B);color:#fff;box-shadow:0 4px 16px rgba(212,133,155,.3)}
+.modal .btn-primary:active{transform:scale(.96)}
+.modal .btn-ghost{background:var(--bg);color:var(--text2);border:1px solid var(--border)}
+.modal .err{color:#EF4444;font-size:13px;margin-top:4px;display:none}
+.modal .note{font-size:12px;color:var(--text2);margin-top:10px;line-height:1.5}
+
+/* Guide lines */
+.guide-grid{position:absolute;inset:0}
+.guide-grid .h-line{position:absolute;left:0;right:0;height:1px;background:rgba(255,255,255,.35)}
+.guide-grid .v-line{position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,.35)}
+.guide-ninths .h-line:nth-child(1){top:33.33%}.guide-ninths .h-line:nth-child(2){top:66.66%}
+.guide-ninths .v-line:nth-child(3){left:33.33%}.guide-ninths .v-line:nth-child(4){left:66.66%}
+.guide-thirds .h-line:nth-child(1){top:33.33%}.guide-thirds .h-line:nth-child(2){top:66.66%}
+.guide-thirds .v-line:nth-child(3){left:33.33%}.guide-thirds .v-line:nth-child(4){left:66.66%}
+.guide-center .h-line{top:50%}.guide-center .v-line{left:50%}
+.guide-face .h-line{top:33%}
+.guide-face .v-line{left:50%}
+.guide-face .face-oval{position:absolute;top:15%;left:50%;transform:translateX(-50%);width:45%;height:55%;border:2px dashed rgba(255,255,255,.4);border-radius:50%}
+
+/* Timer picker */
+.timer-sheet{position:absolute;bottom:0;left:0;right:0;z-index:25;background:rgba(255,250,248,.96);border-radius:24px 24px 0 0;padding:20px;display:none}
+.timer-sheet.show{display:block}
+.timer-sheet h4{text-align:center;margin-bottom:16px;font-size:16px}
+.timer-options{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+.timer-opt{padding:10px 20px;border-radius:20px;background:var(--bg);border:1.5px solid var(--border);font-size:14px;font-weight:600;color:var(--text2);cursor:pointer;transition:all .2s}
+.timer-opt:active,.timer-opt.on{background:var(--accent2);border-color:var(--accent);color:var(--accent3)}
+
+/* Color picker */
+.color-sheet{position:absolute;bottom:0;left:0;right:0;z-index:25;background:rgba(255,250,248,.96);border-radius:24px 24px 0 0;padding:20px;display:none}
+.color-sheet.show{display:block}
+.color-sheet h4{text-align:center;margin-bottom:16px;font-size:16px}
+.color-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:10px}
+.color-dot{aspect-ratio:1;border-radius:50%;cursor:pointer;border:3px solid transparent;transition:all .2s}
+.color-dot:active{transform:scale(.9)}
+.color-dot.selected{border-color:var(--accent3);box-shadow:0 0 12px currentColor}
+
+/* Toast */
+.toast{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(74,59,60,.9);color:#fff;padding:12px 24px;border-radius:24px;font-size:14px;font-weight:600;z-index:200;opacity:0;transition:opacity .3s;pointer-events:none}
+.toast.show{opacity:1}
+
+/* Animations */
+@keyframes pulse{0%,100%{box-shadow:0 0 0 4px var(--accent2)}50%{box-shadow:0 0 0 10px rgba(232,160,180,.15)}}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="cameraWrap">
+    <video id="camera" autoplay playsinline></video>
+    <canvas id="softCanvas" style="display:none"></canvas>
+    <div id="softLayer"></div>
+    <div id="lightOverlay"></div>
+    <div id="guideOverlay"></div>
+  </div>
+  <div id="timerOverlay"></div>
+
+  <button id="toggleBtn" title="隐藏/显示控件">👁️</button>
+
+  <div id="topBar">
+    <button class="top-icon" id="flipBtn" title="翻转摄像头">🔄</button>
+    <button class="top-icon" id="mirrorBtn" title="镜像翻转">↔️</button>
+    <button class="top-icon" id="timerBtn" title="定时关灯">⏱️</button>
+    <button class="top-icon" id="shareBtn" title="复制链接">🔗</button>
+  </div>
+
+  <button class="unlock-badge" id="unlockBadge" title="解锁全部功能">💎 1元解锁</button>
+
+  <div id="drawer">
+    <div class="drawer-card">
+      <!-- Light presets -->
+      <div class="preset-row" id="presetRow"></div>
+
+      <!-- Brightness -->
+      <div class="brightness-row">
+        <button class="btn-sm" id="brightDown">−</button>
+        <span class="label">亮度</span>
+        <input type="range" id="brightSlider" min="5" max="100" value="80">
+        <button class="btn-sm" id="brightUp">+</button>
+        <span class="brightness-val" id="brightVal">80%</span>
+        <button class="btn-sm" id="resetBtn" title="重置默认" style="font-size:14px">↺</button>
+      </div>
+
+      <!-- Feature buttons + capture -->
+      <div class="action-row">
+        <button class="capture-btn" id="captureBtn" title="拍照保存"></button>
+        <div class="feature-scroll" id="featureScroll"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Timer sheet -->
+  <div class="timer-sheet" id="timerSheet">
+    <h4>⏱️ 定时自动关灯</h4>
+    <div class="timer-options" id="timerOptions"></div>
+  </div>
+
+  <!-- Color picker sheet -->
+  <div class="color-sheet" id="colorSheet">
+    <h4>🎨 全色系氛围灯光</h4>
+    <div class="color-grid" id="colorGrid"></div>
+  </div>
+
+  <!-- Unlock modal -->
+  <div class="modal-mask" id="unlockModal">
+    <div class="modal">
+      <h3>💎 解锁全部功能</h3>
+      <div class="price"><small>¥</small>1 <small>永久买断</small></div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:12px">微信或支付宝扫码支付 1 元<br>输入固定口令即可永久解锁</p>
+      <div class="qr-row">
+        <div class="qr-box">
+          <img src="wechat-qr.jpg" alt="微信收款码" onclick="showQrZoom('wechat-qr.jpg','微信')" title="点击放大">
+          <div class="label">微信支付</div>
+        </div>
+        <div class="qr-box">
+          <img src="alipay-qr.jpg" alt="支付宝收款码" onclick="showQrZoom('alipay-qr.jpg','支付宝')" title="点击放大">
+          <div class="label">支付宝</div>
+        </div>
+      </div>
+      <div class="steps">
+        <strong>①</strong> 微信或支付宝扫码支付 <strong>1元</strong><br>
+        <strong>②</strong> 支付完成后，输入统一固定口令<br>
+        <strong>③</strong> 点击确认解锁，立即永久生效
+      </div>
+      <input type="text" id="codeInput" placeholder="请输入解锁口令" autocomplete="off">
+      <div class="err" id="codeErr">口令错误，请重新输入</div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" id="modalClose">取消</button>
+        <button class="btn btn-primary" id="modalConfirm">确认解锁</button>
+      </div>
+      <div class="note">解锁后权限永久绑定当前浏览器<br>退出重进、清理缓存均不会失效</div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <!-- QR zoom -->
+  <div class="qr-zoom-mask" id="qrZoom" onclick="hideQrZoom()">
+    <img id="qrZoomImg" src="" alt="收款码" onclick="event.stopPropagation()">
+    <div class="qr-tip">用<span id="qrZoomLabel">微信</span>扫一扫<br>向商家付款 <strong>¥1.00</strong></div>
+    <button class="qr-close" onclick="hideQrZoom()">关闭</button>
+  </div>
+</div>
+
+<canvas id="captureCanvas" style="display:none"></canvas>
+
+<script>
+// ==================== CONFIG ====================
+const UNLOCK_CODE = 'RENYU2026'; // 固定解锁口令
+const STORAGE_KEY = 'mermaid_light_v1';
+
+// ==================== STATE ====================
+let cameraStream = null;
+let facingMode = 'user'; // 'user'=front, 'environment'=back
+let mirror = true; // front camera default mirrored
+let currentPreset = 'pureWhite';
+let brightness = 80;
+let isUnlocked = false;
+let controlsVisible = true;
+let guideMode = null; // null, 'ninths', 'thirds', 'center', 'face'
+let softSkin = false;
+let timerId = null;
+let timerSeconds = 0;
+let savedPresets = [];
+
+// ==================== PRESETS ====================
+const PRESETS = [
+  {id:'pureWhite', name:'纯白光源', emoji:'🤍', color:'#FFFFFF', free:true},
+  {id:'warmWhite', name:'暖白光源', emoji:'🧡', color:'#FFF5EE', free:true},
+  {id:'coolWhite', name:'冷白光源', emoji:'💎', color:'#F0F8FF', free:true},
+  {id:'sunset', name:'落日橙', emoji:'🌅', color:'#FF8C42', free:false},
+  {id:'iceBlue', name:'清冷冰蓝', emoji:'🧊', color:'#B8E0F7', free:false},
+  {id:'peachPink', name:'蜜桃粉', emoji:'🍑', color:'#FFD1DC', free:false},
+  {id:'softFocus', name:'室内柔焦', emoji:'☕', color:'#FFF8E7', free:false, soft:true},
+  {id:'outdoor', name:'户外自然光', emoji:'☀️', color:'#FFFDE7', free:false},
+  {id:'idPhoto', name:'证件照打光', emoji:'📷', color:'#FFFFFF', free:false, bright:95},
+  {id:'liveStream', name:'直播光效', emoji:'🎥', color:'#FFFAF5', free:false, stable:true},
+  {id:'nightMode', name:'暗夜护眼', emoji:'🌙', color:'#1A0A05', free:false, dark:true},
+];
+
+const FEATURES = [
+  {id:'softSkin', icon:'✨', label:'柔光磨皮', locked:true, action:()=>toggleSoftSkin()},
+  {id:'guide', icon:'📐', label:'构图辅助线', locked:false, action:()=>cycleGuide()},
+  {id:'gradient', icon:'🌈', label:'冷暖渐变', locked:true, action:()=>toggleGradient()},
+  {id:'colorPick', icon:'🎨', label:'全色氛围灯', locked:true, action:()=>toggleColorSheet()},
+  {id:'mirrorFeat', icon:'🪞', label:'化妆镜', locked:false, action:()=>toggleMirrorMode()},
+  {id:'savePreset', icon:'💾', label:'保存当前', locked:false, action:()=>saveCurrentPreset()},
+  {id:'loadPreset', icon:'📂', label:'快速调取', locked:false, action:()=>loadSavedPreset()},
+];
+
+const FULL_COLORS = [
+  '#FFFFFF','#FFF5EE','#FFE4E1','#FFD1DC','#FFB6C1','#FFC0CB','#FF8C94',
+  '#FF8C42','#FFB347','#FFD700','#FFFACD','#FFFDE7','#F0FFF0','#E0FFE0',
+  '#B8E0F7','#87CEEB','#6495ED','#E6E6FA','#DDA0DD','#D8BFD8','#C9B8FF',
+  '#F5E6CC','#FAEBD7','#F5F5DC','#FFF0F5','#F8F8FF','#F0F8FF','#FFFAFA',
+];
+
+// ==================== INIT ====================
+function init(){
+  checkUnlock();
+  renderPresets();
+  renderFeatures();
+  renderTimerOptions();
+  renderColorGrid();
+  bindEvents();
+  startCamera();
+}
+
+function checkUnlock(){
+  try{
+    const d = localStorage.getItem(STORAGE_KEY);
+    if(d){
+      const parsed = JSON.parse(d);
+      // Verify with stored hash
+      if(parsed.v === '1' && parsed.h && verifyHash(parsed.h)){
+        isUnlocked = true;
+        document.getElementById('unlockBadge').textContent = '✅ 已解锁';
+        document.getElementById('unlockBadge').classList.add('unlocked');
+      }
+    }
+  }catch(e){}
+}
+
+function verifyHash(h){
+  // Simple hash check: SHA-like but simple for localStorage
+  const expected = simpleHash(UNLOCK_CODE + 'mermaid_salt');
+  return h === expected;
+}
+
+function simpleHash(s){
+  let h = 0;
+  for(let i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0;}
+  return h.toString(36);
+}
+
+function setUnlocked(){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({v:'1',h:simpleHash(UNLOCK_CODE+'mermaid_salt')}));
+    isUnlocked = true;
+    document.getElementById('unlockBadge').textContent = '✅ 已解锁';
+    document.getElementById('unlockBadge').classList.add('unlocked');
+    renderPresets();
+    renderFeatures();
+    toast('✅ 解锁成功！全部功能已开放');
+  }catch(e){
+    toast('存储失败，请检查浏览器设置');
+  }
+}
+
+// ==================== CAMERA ====================
+async function startCamera(){
+  try{
+    if(cameraStream){cameraStream.getTracks().forEach(t=>t.stop());}
+    // Try environment first on mobile
+    const constraints = {video:{facingMode,width:{ideal:1280},height:{ideal:720}},audio:false};
+    cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+    const video = document.getElementById('camera');
+    video.srcObject = cameraStream;
+    video.classList.toggle('mirror', mirror && facingMode==='user');
+    await video.play();
+    // Start soft layer sync
+    startSoftLayer();
+  }catch(e){
+    console.error('Camera error:', e);
+    toast('无法访问摄像头，请检查权限设置');
+  }
+}
+
+async function flipCamera(){
+  facingMode = facingMode==='user'?'environment':'user';
+  mirror = facingMode==='user';
+  const mirrorBtn = document.getElementById('mirrorBtn');
+  mirrorBtn.classList.toggle('on', mirror);
+  await startCamera();
+}
+
+function toggleMirror(){
+  mirror = !mirror;
+  const video = document.getElementById('camera');
+  video.classList.toggle('mirror', mirror && facingMode==='user');
+  document.getElementById('mirrorBtn').classList.toggle('on', mirror);
+}
+
+// Soft skin layer using canvas
+let softInterval = null;
+function startSoftLayer(){
+  if(softInterval)clearInterval(softInterval);
+  softInterval = setInterval(()=>{
+    if(!softSkin)return;
+    const video = document.getElementById('camera');
+    const canvas = document.getElementById('softCanvas');
+    if(video.readyState<2)return;
+    canvas.width = video.videoWidth/4;
+    canvas.height = video.videoHeight/4;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video,0,0,canvas.width,canvas.height);
+    const softLayer = document.getElementById('softLayer');
+    softLayer.style.backgroundImage = `url(${canvas.toDataURL()})`;
+    softLayer.style.backgroundSize = 'cover';
+    softLayer.style.backgroundPosition = 'center';
+  }, 150);
+}
+
+function toggleSoftSkin(){
+  if(!isUnlocked){showUnlock();return;}
+  softSkin = !softSkin;
+  document.getElementById('softLayer').classList.toggle('active', softSkin);
+  document.querySelector('[data-feat="softSkin"]')?.classList.toggle('on', softSkin);
+}
+
+// ==================== LIGHT ====================
+function setPreset(id){
+  const preset = PRESETS.find(p=>p.id===id);
+  if(!preset)return;
+  if(!preset.free && !isUnlocked){showUnlock();return;}
+  currentPreset = id;
+  const b = preset.bright || brightness;
+  if(preset.bright)brightness = b;
+  document.getElementById('brightSlider').value = brightness;
+  document.getElementById('brightVal').textContent = brightness+'%';
+  
+  // Handle special modes
+  document.getElementById('softLayer').classList.toggle('active', preset.soft && softSkin);
+  
+  applyLight(preset.color, brightness);
+  renderPresets();
+}
+
+function applyLight(color, b){
+  const overlay = document.getElementById('lightOverlay');
+  const alpha = b/100;
+  // Convert hex to rgba
+  const r=parseInt(color.slice(1,3),16),g=parseInt(color.slice(3,5),16),bb=parseInt(color.slice(5,7),16);
+  overlay.style.background = `rgba(${r},${g},${bb},${alpha})`;
+}
+
+function setBrightness(val){
+  brightness = parseInt(val);
+  document.getElementById('brightVal').textContent = brightness+'%';
+  const preset = PRESETS.find(p=>p.id===currentPreset);
+  if(preset)applyLight(preset.color, brightness);
+}
+
+function resetDefaults(){
+  currentPreset = 'pureWhite';
+  brightness = 80;
+  document.getElementById('brightSlider').value = 80;
+  document.getElementById('brightVal').textContent = '80%';
+  applyLight('#FFFFFF', 80);
+  document.getElementById('softLayer').classList.remove('active');
+  softSkin = false;
+  guideMode = null;
+  document.getElementById('guideOverlay').className = '';
+  document.getElementById('guideOverlay').classList.remove('active');
+  renderPresets();
+  renderFeatures();
+  toast('已恢复默认设置');
+}
+
+// Gradient mode
+let gradientMode = false;
+function toggleGradient(){
+  if(!isUnlocked){showUnlock();return;}
+  gradientMode = !gradientMode;
+  if(gradientMode){
+    const overlay = document.getElementById('lightOverlay');
+    overlay.style.background = `linear-gradient(135deg, rgba(255,180,120,${brightness/100}) 0%, rgba(180,220,255,${brightness/100}) 100%)`;
+  }else{
+    const preset = PRESETS.find(p=>p.id===currentPreset);
+    if(preset)applyLight(preset.color, brightness);
+  }
+  document.querySelector('[data-feat="gradient"]')?.classList.toggle('on', gradientMode);
+}
+
+// ==================== GUIDES ====================
+function cycleGuide(){
+  const modes = [null,'ninths','thirds','center','face'];
+  const idx = modes.indexOf(guideMode);
+  guideMode = modes[(idx+1)%modes.length];
+  const overlay = document.getElementById('guideOverlay');
+  overlay.className = '';
+  overlay.classList.remove('active');
+  if(!guideMode){
+    document.querySelector('[data-feat="guide"]')?.classList.remove('on');
+    return;
+  }
+  overlay.classList.add('active');
+  const guideClass = guideMode==='ninths'?'guide-ninths':guideMode==='thirds'?'guide-thirds':guideMode==='center'?'guide-center':'guide-face';
+  overlay.className = `guide-grid ${guideClass}`;
+  overlay.innerHTML = guideMode==='face'?
+    '<div class="h-line" style="top:33%"></div><div class="v-line" style="left:50%"></div><div class="face-oval"></div>'
+    :'<div class="h-line"></div><div class="h-line"></div><div class="v-line"></div><div class="v-line"></div>';
+  document.querySelector('[data-feat="guide"]')?.classList.add('on');
+}
+
+function toggleMirrorMode(){
+  toggleMirror();
+  toast(mirror?'镜像模式：已开启':'镜像模式：已关闭');
+}
+
+// ==================== TIMER ====================
+function showTimerSheet(){
+  document.getElementById('timerSheet').classList.toggle('show');
+  document.getElementById('colorSheet').classList.remove('show');
+}
+
+function setTimer(minutes){
+  document.getElementById('timerSheet').classList.remove('show');
+  if(timerId){clearInterval(timerId);timerId=null;}
+  if(minutes===0){
+    document.getElementById('timerOverlay').classList.remove('active');
+    document.getElementById('timerBtn').classList.remove('on');
+    return;
+  }
+  timerSeconds = minutes*60;
+  document.getElementById('timerBtn').classList.add('on');
+  document.getElementById('timerOverlay').classList.add('active');
+  updateTimerDisplay();
+  timerId = setInterval(()=>{
+    timerSeconds--;
+    if(timerSeconds<=0){
+      clearInterval(timerId);timerId=null;
+      document.getElementById('timerOverlay').classList.remove('active');
+      document.getElementById('timerBtn').classList.remove('on');
+      // Turn off light overlay
+      applyLight('#000000', 0);
+      toast('⏱️ 定时结束，灯光已关闭');
+    }else{
+      updateTimerDisplay();
+    }
+  },1000);
+}
+
+function updateTimerDisplay(){
+  const m=Math.floor(timerSeconds/60),s=timerSeconds%60;
+  document.getElementById('timerOverlay').textContent = `${m}:${s.toString().padStart(2,'0')}`;
+}
+
+// ==================== COLOR PICKER ====================
+function toggleColorSheet(){
+  if(!isUnlocked){showUnlock();return;}
+  document.getElementById('colorSheet').classList.toggle('show');
+  document.getElementById('timerSheet').classList.remove('show');
+  document.querySelector('[data-feat="colorPick"]')?.classList.toggle('on', document.getElementById('colorSheet').classList.contains('show'));
+}
+
+function setCustomColor(color){
+  const overlay = document.getElementById('lightOverlay');
+  overlay.style.background = color.replace(')', `,${brightness/100})`).replace('rgb','rgba');
+  if(!color.startsWith('rgba')){
+    applyLight(color, brightness);
+  }
+  document.getElementById('colorSheet').classList.remove('show');
+  currentPreset = 'custom';
+  renderPresets();
+}
+
+// ==================== PRESET SAVE/LOAD ====================
+function saveCurrentPreset(){
+  const preset = PRESETS.find(p=>p.id===currentPreset);
+  if(!preset)return;
+  savedPresets.push({...preset, brightness, savedAt:Date.now()});
+  if(savedPresets.length>5)savedPresets.shift();
+  try{localStorage.setItem('mermaid_saved_presets', JSON.stringify(savedPresets));}catch(e){}
+  toast('✅ 已保存当前光效');
+}
+
+function loadSavedPreset(){
+  try{
+    const d = localStorage.getItem('mermaid_saved_presets');
+    if(d)savedPresets = JSON.parse(d);
+  }catch(e){savedPresets=[];}
+  if(!savedPresets.length){toast('暂无保存的光效');return;}
+  const p = savedPresets[savedPresets.length-1];
+  brightness = p.brightness||80;
+  document.getElementById('brightSlider').value = brightness;
+  document.getElementById('brightVal').textContent = brightness+'%';
+  applyLight(p.color, brightness);
+  currentPreset = p.id;
+  renderPresets();
+  toast('✅ 已调取最近保存的光效');
+}
+
+// ==================== CAPTURE ====================
+function capturePhoto(){
+  const video = document.getElementById('camera');
+  const canvas = document.getElementById('captureCanvas');
+  canvas.width = video.videoWidth||1280;
+  canvas.height = video.videoHeight||720;
+  const ctx = canvas.getContext('2d');
+  
+  // Apply mirror if needed
+  if(mirror && facingMode==='user'){ctx.translate(canvas.width,0);ctx.scale(-1,1);}
+  ctx.drawImage(video,0,0,canvas.width,canvas.height);
+  ctx.setTransform(1,0,0,1,0,0); // reset
+  
+  // Apply light overlay
+  const overlay = document.getElementById('lightOverlay');
+  const bgColor = overlay.style.background;
+  if(bgColor&&bgColor!=='none'){
+    ctx.fillStyle = bgColor.replace('rgb','rgba');
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+  }
+  
+  // Apply soft skin if active
+  if(softSkin){
+    ctx.filter = 'blur(4px) brightness(1.1)';
+    ctx.globalAlpha = 0.25;
+    ctx.drawImage(video,0,0,canvas.width,canvas.height);
+    ctx.filter = 'none';ctx.globalAlpha=1;
+  }
+  
+  canvas.toBlob(blob=>{
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `人鱼补光_${Date.now()}.jpg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast('📸 已保存至相册');
+  },'image/jpeg',0.92);
+}
+
+// ==================== HIDE/SHOW TOGGLE ====================
+function toggleControls(){
+  controlsVisible = !controlsVisible;
+  const drawer = document.getElementById('drawer');
+  const topBar = document.getElementById('topBar');
+  const unlockBadge = document.getElementById('unlockBadge');
+  const toggleBtn = document.getElementById('toggleBtn');
+  
+  drawer.classList.toggle('hidden', !controlsVisible);
+  topBar.style.opacity = controlsVisible?'1':'0';
+  topBar.style.transform = controlsVisible?'translateY(0)':'translateY(-10px)';
+  unlockBadge.style.opacity = controlsVisible?'1':'0';
+  toggleBtn.textContent = controlsVisible?'👁️':'🔍';
+  
+  // Hide sheets too
+  document.getElementById('timerSheet').classList.remove('show');
+  document.getElementById('colorSheet').classList.remove('show');
+}
+
+// ==================== UNLOCK MODAL ====================
+function showUnlock(){
+  if(isUnlocked)return;
+  document.getElementById('unlockModal').classList.add('show');
+  document.getElementById('codeInput').value = '';
+  document.getElementById('codeErr').style.display = 'none';
+}
+
+function confirmUnlock(){
+  const input = document.getElementById('codeInput').value.trim().toUpperCase();
+  if(input === UNLOCK_CODE){
+    document.getElementById('unlockModal').classList.remove('show');
+    setUnlocked();
+  }else{
+    document.getElementById('codeErr').style.display = 'block';
+    document.getElementById('codeInput').value = '';
+  }
+}
+
+// ==================== SHARE ====================
+function copyShareLink(){
+  const url = window.location.href;
+  if(navigator.clipboard){
+    navigator.clipboard.writeText(url).then(()=>toast('🔗 链接已复制，分享给朋友吧'));
+  }else{
+    // Fallback
+    const ta = document.createElement('textarea');
+    ta.value = url;ta.style.position='fixed';ta.style.opacity='0';
+    document.body.appendChild(ta);ta.select();
+    document.execCommand('copy');document.body.removeChild(ta);
+    toast('🔗 链接已复制');
+  }
+}
+
+// ==================== TOAST ====================
+function toast(msg){
+  const el = document.getElementById('toast');
+  el.textContent = msg;el.classList.add('show');
+  clearTimeout(el._timeout);
+  el._timeout = setTimeout(()=>el.classList.remove('show'), 2000);
+}
+
+// ==================== RENDER ====================
+function renderPresets(){
+  const row = document.getElementById('presetRow');
+  row.innerHTML = PRESETS.map(p=>`
+    <div class="preset-chip ${currentPreset===p.id?'active':''} ${!p.free&&!isUnlocked?'locked':''}"
+      onclick="setPreset('${p.id}')">
+      <span class="emoji">${p.emoji}</span>${p.name}
+    </div>`).join('');
+}
+
+function renderFeatures(){
+  const scroll = document.getElementById('featureScroll');
+  scroll.innerHTML = FEATURES.map(f=>`
+    <button class="feat-btn ${f.locked&&!isUnlocked?'locked':''}" data-feat="${f.id}" onclick="${f.action.name==='toggleColorSheet'?'toggleColorSheet()':f.action.name==='cycleGuide'?'cycleGuide()':f.action.name==='toggleSoftSkin'?'toggleSoftSkin()':f.action.name==='toggleGradient'?'toggleGradient()':f.action.name==='toggleMirrorMode'?'toggleMirrorMode()':f.action.name==='saveCurrentPreset'?'saveCurrentPreset()':'loadSavedPreset()'}">
+      ${f.icon} ${f.label}
+    </button>`).join('');
+}
+
+function renderTimerOptions(){
+  const opts = document.getElementById('timerOptions');
+  const times = [
+    {label:'关闭定时',val:0},{label:'1分钟',val:1},{label:'3分钟',val:3},
+    {label:'5分钟',val:5},{label:'10分钟',val:10}
+  ];
+  opts.innerHTML = times.map(t=>
+    `<div class="timer-opt" onclick="setTimer(${t.val})">${t.label}</div>`).join('');
+}
+
+function renderColorGrid(){
+  const grid = document.getElementById('colorGrid');
+  grid.innerHTML = FULL_COLORS.map(c=>
+    `<div class="color-dot" style="background:${c}" onclick="setCustomColor('${c}')"></div>`).join('');
+}
+
+// ==================== EVENTS ====================
+function bindEvents(){
+  document.getElementById('toggleBtn').addEventListener('click', toggleControls);
+  document.getElementById('flipBtn').addEventListener('click', flipCamera);
+  document.getElementById('mirrorBtn').addEventListener('click', toggleMirror);
+  document.getElementById('timerBtn').addEventListener('click', showTimerSheet);
+  document.getElementById('shareBtn').addEventListener('click', copyShareLink);
+  document.getElementById('captureBtn').addEventListener('click', capturePhoto);
+  document.getElementById('unlockBadge').addEventListener('click', showUnlock);
+  
+  const slider = document.getElementById('brightSlider');
+  slider.addEventListener('input', e=>setBrightness(e.target.value));
+  
+  document.getElementById('brightDown').addEventListener('click', ()=>{const v=Math.max(5,brightness-5);slider.value=v;setBrightness(v);});
+  document.getElementById('brightUp').addEventListener('click', ()=>{const v=Math.min(100,brightness+5);slider.value=v;setBrightness(v);});
+  document.getElementById('resetBtn').addEventListener('click', resetDefaults);
+  
+  document.getElementById('modalConfirm').addEventListener('click', confirmUnlock);
+  document.getElementById('modalClose').addEventListener('click', ()=>document.getElementById('unlockModal').classList.remove('show'));
+  document.getElementById('codeInput').addEventListener('keydown', e=>{if(e.key==='Enter')confirmUnlock();});
+  
+  // QR zoom
+  window.showQrZoom = function(src, label){
+    document.getElementById('qrZoomImg').src = src;
+    document.getElementById('qrZoomLabel').textContent = label;
+    document.getElementById('qrZoom').classList.add('show');
+  };
+  window.hideQrZoom = function(){
+    document.getElementById('qrZoom').classList.remove('show');
+  };
+  
+  // Close sheets on outside click
+  document.getElementById('cameraWrap').addEventListener('click', (e)=>{
+    if(e.target.tagName==='VIDEO'){
+      document.getElementById('timerSheet').classList.remove('show');
+      document.getElementById('colorSheet').classList.remove('show');
+    }
+  });
+  
+  // Prevent zoom
+  document.addEventListener('gesturestart',e=>e.preventDefault());
+  document.addEventListener('gesturechange',e=>e.preventDefault());
+  document.addEventListener('gestureend',e=>e.preventDefault());
+}
+
+// ==================== START ====================
+init();
+
+// Haptic feedback simulation for capture
+document.getElementById('captureBtn').addEventListener('click', ()=>{
+  if(navigator.vibrate)navigator.vibrate(10);
+});
+</script>
+</body>
+</html>
