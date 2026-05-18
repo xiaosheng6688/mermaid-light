@@ -287,14 +287,25 @@ const PRESETS = [
 ];
 
 const FEATURES = [
-  {id:'softSkin', icon:'✨', label:'柔光磨皮', locked:true, action:()=>toggleSoftSkin()},
-  {id:'guide', icon:'📐', label:'构图辅助线', locked:false, action:()=>cycleGuide()},
-  {id:'gradient', icon:'🌈', label:'冷暖渐变', locked:true, action:()=>toggleGradient()},
-  {id:'colorPick', icon:'🎨', label:'全色氛围灯', locked:true, action:()=>toggleColorSheet()},
-  {id:'mirrorFeat', icon:'🪞', label:'化妆镜', locked:false, action:()=>toggleMirrorMode()},
-  {id:'savePreset', icon:'💾', label:'保存当前', locked:false, action:()=>saveCurrentPreset()},
-  {id:'loadPreset', icon:'📂', label:'快速调取', locked:false, action:()=>loadSavedPreset()},
+  {id:'softSkin', icon:'✨', label:'柔光磨皮', locked:true},
+  {id:'guide', icon:'📐', label:'构图辅助线', locked:false},
+  {id:'gradient', icon:'🌈', label:'冷暖渐变', locked:true},
+  {id:'colorPick', icon:'🎨', label:'全色氛围灯', locked:true},
+  {id:'mirrorFeat', icon:'🪞', label:'化妆镜', locked:false},
+  {id:'savePreset', icon:'💾', label:'保存当前', locked:false},
+  {id:'loadPreset', icon:'📂', label:'快速调取', locked:false},
 ];
+
+// Feature button → actual handler mapping
+const FEAT_CLICK = {
+  softSkin: ()=>{if(!isUnlocked){showUnlock();return;}softSkin=!softSkin;document.getElementById('softLayer').classList.toggle('active',softSkin);document.querySelector('[data-feat=softSkin]')?.classList.toggle('on',softSkin);},
+  guide: ()=>cycleGuide(),
+  gradient: ()=>{if(!isUnlocked){showUnlock();return;}gradientMode=!gradientMode;if(gradientMode){const p=PRESETS.find(x=>x.id===currentPreset);document.getElementById('lightOverlay').style.background=`linear-gradient(135deg,rgba(255,180,120,${brightness/100}) 0%,rgba(180,220,255,${brightness/100}) 100%)`;}else{const p=PRESETS.find(x=>x.id===currentPreset);if(p)applyLight(p.color,brightness);}document.querySelector('[data-feat=gradient]')?.classList.toggle('on',gradientMode);},
+  colorPick: ()=>{if(!isUnlocked){showUnlock();return;}document.getElementById('colorSheet').classList.toggle('show');document.getElementById('timerSheet').classList.remove('show');document.querySelector('[data-feat=colorPick]')?.classList.toggle('on',document.getElementById('colorSheet').classList.contains('show'));},
+  mirrorFeat: ()=>{toggleMirror();toast(mirror?'镜像模式：已开启':'镜像模式：已关闭');},
+  savePreset: ()=>saveCurrentPreset(),
+  loadPreset: ()=>loadSavedPreset(),
+};
 
 const FULL_COLORS = [
   '#FFFFFF','#FFF5EE','#FFE4E1','#FFD1DC','#FFB6C1','#FFC0CB','#FF8C94',
@@ -467,18 +478,7 @@ function resetDefaults(){
 
 // Gradient mode
 let gradientMode = false;
-function toggleGradient(){
-  if(!isUnlocked){showUnlock();return;}
-  gradientMode = !gradientMode;
-  if(gradientMode){
-    const overlay = document.getElementById('lightOverlay');
-    overlay.style.background = `linear-gradient(135deg, rgba(255,180,120,${brightness/100}) 0%, rgba(180,220,255,${brightness/100}) 100%)`;
-  }else{
-    const preset = PRESETS.find(p=>p.id===currentPreset);
-    if(preset)applyLight(preset.color, brightness);
-  }
-  document.querySelector('[data-feat="gradient"]')?.classList.toggle('on', gradientMode);
-}
+
 
 // ==================== GUIDES ====================
 function cycleGuide(){
@@ -553,14 +553,11 @@ function toggleColorSheet(){
 }
 
 function setCustomColor(color){
-  const overlay = document.getElementById('lightOverlay');
-  overlay.style.background = color.replace(')', `,${brightness/100})`).replace('rgb','rgba');
-  if(!color.startsWith('rgba')){
-    applyLight(color, brightness);
-  }
   document.getElementById('colorSheet').classList.remove('show');
   currentPreset = 'custom';
+  applyLight(color, brightness);
   renderPresets();
+  document.querySelector('[data-feat=colorPick]')?.classList.remove('on');
 }
 
 // ==================== PRESET SAVE/LOAD ====================
@@ -641,8 +638,9 @@ function toggleControls(){
   
   drawer.classList.toggle('hidden', !controlsVisible);
   topBar.style.opacity = controlsVisible?'1':'0';
-  topBar.style.transform = controlsVisible?'translateY(0)':'translateY(-10px)';
+  topBar.style.pointerEvents = controlsVisible?'auto':'none';
   unlockBadge.style.opacity = controlsVisible?'1':'0';
+  unlockBadge.style.pointerEvents = controlsVisible?'auto':'none';
   toggleBtn.textContent = controlsVisible?'👁️':'🔍';
   
   // Hide sheets too
@@ -705,9 +703,14 @@ function renderPresets(){
 function renderFeatures(){
   const scroll = document.getElementById('featureScroll');
   scroll.innerHTML = FEATURES.map(f=>`
-    <button class="feat-btn ${f.locked&&!isUnlocked?'locked':''}" data-feat="${f.id}" onclick="${f.action.name==='toggleColorSheet'?'toggleColorSheet()':f.action.name==='cycleGuide'?'cycleGuide()':f.action.name==='toggleSoftSkin'?'toggleSoftSkin()':f.action.name==='toggleGradient'?'toggleGradient()':f.action.name==='toggleMirrorMode'?'toggleMirrorMode()':f.action.name==='saveCurrentPreset'?'saveCurrentPreset()':'loadSavedPreset()'}">
+    <button class="feat-btn ${f.locked&&!isUnlocked?'locked':''}" data-feat="${f.id}" id="feat-${f.id}">
       ${f.icon} ${f.label}
     </button>`).join('');
+  // Attach event listeners (avoids broken inline onclick with anonymous arrow functions)
+  FEATURES.forEach(f=>{
+    const btn = document.getElementById('feat-'+f.id);
+    if(btn && FEAT_CLICK[f.id]) btn.addEventListener('click', FEAT_CLICK[f.id]);
+  });
 }
 
 function renderTimerOptions(){
